@@ -21,7 +21,7 @@ public class OAuth2XSUAAEnricher implements AuthenticationEnricher, Closeable {
 	private static final Logger log = LoggerFactory.getLogger(OAuth2XSUAAEnricher.class);
 
 	private final CloseableHttpClient httpClient;
-	private final ClientCredentialsTokenFlow tokenClient;
+	private ClientCredentialsTokenFlow tokenClient = null;
 
 	OAuth2XSUAAEnricher(AbstractOAuth2XSUAAAuthenticationConfiguration config) {
 		this(config, null);
@@ -40,10 +40,16 @@ public class OAuth2XSUAAEnricher implements AuthenticationEnricher, Closeable {
 			this.tokenClient = tokenClient;
 		} else {
 			this.httpClient = HttpClientFactory.create(c.getClientIdentity());
-			this.tokenClient = new XsuaaTokenFlows(new DefaultOAuth2TokenService(this.httpClient),
+			try {
+				this.tokenClient = new XsuaaTokenFlows(new DefaultOAuth2TokenService(this.httpClient),
 					new PromregatorOAuth2ServiceEndpointsProvider(c), c.getClientIdentity()).clientCredentialsTokenFlow();
+			} catch(RuntimeException e) {
+				log.error("Cannot instanciate token client", e);
+			}
 		}
-		this.tokenClient.scopes(config.getScopes().toArray(new String[0]));
+		if(this.tokenClient != null) {
+			this.tokenClient.scopes(config.getScopes().toArray(new String[0]));
+		}
 
 		// Ensure getting the web token works (fail-fast)
 		// We don't raise an exception, but we log the failure.
@@ -80,6 +86,9 @@ public class OAuth2XSUAAEnricher implements AuthenticationEnricher, Closeable {
 	}
 
 	private final String getJWT() throws TokenFlowException {
+		if (this.tokenClient == null) {
+			return null;
+		}
 		return this.tokenClient.execute().getAccessToken();
 	}
 
